@@ -1,0 +1,91 @@
+name: Scrape & Deploy Radar
+
+on:
+  # Run every day at 05:30 UTC.
+  schedule:
+    - cron: "30 5 * * *"
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+  # Rebuild on pushes to main so config/code changes take effect immediately.
+  push:
+    branches: [main]
+
+# Needed so the job can commit the regenerated index.html back to the repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-scrape
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # ---- Tune the radar here (or in repo Settings > Variables) ----------
+      TARGET_ZIP_CODES: ${{ vars.TARGET_ZIP_CODES }}   # e.g. "1020,1100,1160"
+      MAX_PRICE_LIMIT:  ${{ vars.MAX_PRICE_LIMIT || '600000' }}
+      PRICE_SWEET_SPOT: ${{ vars.PRICE_SWEET_SPOT || '250000' }}
+      FAIR_PPSQM:       ${{ vars.FAIR_PPSQM }}   # optional €/m² reference for the barometer
+      # Live scraping. willhaben = Vienna condos + Austria houses;
+      # immmo = IMMMO meta-search (ImmoScout24, FindMyHome, dibeo, …).
+      # Override the *_FEEDS vars (JSON arrays) to target other regions/types.
+      SOURCES:         ${{ vars.SOURCES || 'willhaben,immmo' }}
+      WILLHABEN_FEEDS: ${{ vars.WILLHABEN_FEEDS }}
+      IMMMO_FEEDS:     ${{ vars.IMMMO_FEEDS }}
+      DB_PATH:          data/radar.sqlite
+      OUTPUT_PATH:      index.html
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate dashboard
+        run: python generate_radar.py
+
+      - name: Commit updated dashboard & baseline DB
+        run: |
+          git config user.name  "radar-bot"
+          git config user.email "radar-bot@users.noreply.github.com"
+          git add index.html data/radar.sqlite
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: refresh market radar ($(date -u +%Y-%m-%d))"
+            git push
+          fi
+
+  # Deploy the committed index.html via GitHub Pages.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout (with the fresh commit)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

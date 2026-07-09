@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.DS_Store
+
+# Local editor / tooling config (not part of the project)
+.claude/
+
+# The baseline DB is committed by CI so medians survive across runs. If you
+# prefer to keep it out of git, uncomment the next line and remove it from the
+# workflow's `git add`.
+# data/radar.sqlite

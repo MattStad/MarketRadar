@@ -1,0 +1,6 @@
+# The entire pipeline — scraping (urllib), storage (sqlite3), scoring and HTML
+# rendering — runs on the Python standard library only. No third-party packages
+# are required.
+#
+# Add any dependencies here if you extend the scrapers (e.g. a headless browser
+# such as playwright for portals with heavy bot protection).
